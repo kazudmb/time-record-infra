@@ -95,4 +95,4 @@ jobs:
           aws_region: ${{ env.AWS_REGION }}
           tf_state_bucket: ${{ env.TF_STATE_BUCKET }}
           tf_state_key: ${{ env.TF_STATE_KEY }}
-          aws_role_arn: ${{ secrets[format('AWS_ROLE_ARN_{0}', matrix.env.upper)] }}
+          aws_role_arn: ${{ secrets.AWS_ROLE_ARN }}
