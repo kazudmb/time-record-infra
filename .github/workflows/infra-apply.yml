@@ -2,15 +2,33 @@ name: Terraform Apply
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - stg
+      - prd
     paths:
       - 'terraform/**'
       - '.github/workflows/infra-apply.yml'
   workflow_dispatch:
+    inputs:
+      target_env:
+        description: '手動実行で対象環境を指定する場合に利用します (dev/stg/prd)'
+        required: false
 
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env:
+          - name: dev
+            upper: DEV
+          - name: stg
+            upper: STG
+          - name: prd
+            upper: PRD
+      fail-fast: false
+    environment: ${{ matrix.env.name }}
     permissions:
       contents: read
       id-token: write
@@ -20,67 +38,55 @@ jobs:
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
       TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'infra/terraform.tfstate' }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform Init
-        working-directory: ${{ env.TF_WORKDIR }}
+      - name: Detect branch env
+        id: detect_env
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          set -euo pipefail
-          if [ -z "${TF_STATE_BUCKET:-}" ]; then
-            echo "TF_STATE_BUCKET secret is required for remote state." >&2
-            exit 1
-          fi
-          if [ -z "${TF_STATE_KEY:-}" ]; then
-            echo "TF_STATE_KEY variable is required for remote state." >&2
-            exit 1
-          fi
+          case "${REF_NAME}" in
+            main) echo "branch_env=dev" >> "$GITHUB_OUTPUT" ;;
+            stg) echo "branch_env=stg" >> "$GITHUB_OUTPUT" ;;
+            prd) echo "branch_env=prd" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "branch_env=" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
-          args=(
-            "-backend-config=bucket=${TF_STATE_BUCKET}"
-            "-backend-config=key=${TF_STATE_KEY}"
-            "-backend-config=region=${AWS_REGION}"
-          )
-
-          terraform init -input=false "${args[@]}"
-
-      - name: Terraform Fmt
-        working-directory: ${{ env.TF_WORKDIR }}
-        run: terraform fmt -check
-
-      - name: Terraform Validate
-        working-directory: ${{ env.TF_WORKDIR }}
-        run: terraform validate
-
-      - name: Terraform Plan
-        id: plan
-        working-directory: ${{ env.TF_WORKDIR }}
+      - name: Filter target env
+        id: filter
+        env:
+          TARGET_ENV: ${{ github.event.inputs.target_env || '' }}
+          BRANCH_ENV: ${{ steps.detect_env.outputs.branch_env || '' }}
+          MATRIX_ENV: ${{ matrix.env.name }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_MERGED: ${{ github.event.pull_request.merged || false }}
         run: |
-          set -e
-          terraform plan -input=false -out=tfplan
-          terraform show -json tfplan > tfplan.json
-          if jq -e '.resource_changes | length == 0' tfplan.json >/dev/null; then
-            echo "changes=false" >> $GITHUB_OUTPUT
+          if [ "${EVENT_NAME}" = "pull_request" ] && [ "${PR_MERGED}" != "true" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$TARGET_ENV" ]; then
+            if [ "$TARGET_ENV" = "$MATRIX_ENV" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            fi
+          elif [ -n "$BRANCH_ENV" ]; then
+            if [ "$BRANCH_ENV" = "$MATRIX_ENV" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            fi
           else
-            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "run=true" >> "$GITHUB_OUTPUT"
           fi
-      - name: Show Plan
-        if: steps.plan.outputs.changes == 'true'
-        working-directory: ${{ env.TF_WORKDIR }}
-        run: terraform show -no-color tfplan
 
-      - name: Terraform Apply
-        if: steps.plan.outputs.changes == 'true'
-        working-directory: ${{ env.TF_WORKDIR }}
-        run: terraform apply -input=false tfplan
+      - name: Terraform Apply Pipeline
+        if: steps.filter.outputs.run == 'true'
+        uses: ./.github/actions/terraform-apply
+        with:
+          tf_workdir: ${{ env.TF_WORKDIR }}
+          aws_region: ${{ env.AWS_REGION }}
+          tf_state_bucket: ${{ env.TF_STATE_BUCKET }}
+          tf_state_key: ${{ env.TF_STATE_KEY }}
+          aws_role_arn: ${{ secrets[format('AWS_ROLE_ARN_{0}', matrix.env.upper)] }}

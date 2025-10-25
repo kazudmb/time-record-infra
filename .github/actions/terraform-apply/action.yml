@@ -1,0 +1,80 @@
+name: Terraform Apply Composite
+description: Terraform init/plan/apply with shared configuration
+inputs:
+  tf_workdir:
+    description: Terraform working directory
+    required: true
+  aws_region:
+    description: AWS region for backend and provider
+    required: true
+  tf_state_bucket:
+    description: S3 bucket for Terraform remote state
+    required: true
+  tf_state_key:
+    description: S3 key for Terraform remote state
+    required: true
+  aws_role_arn:
+    description: IAM role ARN assumed via OIDC
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Configure AWS Credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.aws_role_arn }}
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Terraform Init
+      shell: bash
+      working-directory: ${{ inputs.tf_workdir }}
+      run: |
+        set -euo pipefail
+        TF_STATE_BUCKET_VALUE="${TF_STATE_BUCKET:-${{ inputs.tf_state_bucket }}}"
+        TF_STATE_KEY_VALUE="${TF_STATE_KEY:-${{ inputs.tf_state_key }}}"
+
+        if [ -z "${TF_STATE_BUCKET_VALUE}" ]; then
+          echo "TF_STATE_BUCKET input is required for remote state." >&2
+          exit 1
+        fi
+        if [ -z "${TF_STATE_KEY_VALUE}" ]; then
+          echo "TF_STATE_KEY input is required for remote state." >&2
+          exit 1
+        fi
+
+        terraform init -input=false \
+          -backend-config="bucket=${TF_STATE_BUCKET_VALUE}" \
+          -backend-config="key=${TF_STATE_KEY_VALUE}" \
+          -backend-config="region=${{ inputs.aws_region }}"
+
+    - name: Terraform Fmt
+      shell: bash
+      working-directory: ${{ inputs.tf_workdir }}
+      run: terraform fmt -check
+
+    - name: Terraform Validate
+      shell: bash
+      working-directory: ${{ inputs.tf_workdir }}
+      run: terraform validate
+
+    - name: Terraform Plan & Apply
+      shell: bash
+      working-directory: ${{ inputs.tf_workdir }}
+      run: |
+        set -euo pipefail
+        terraform plan -input=false -out=tfplan
+        terraform show -json tfplan > tfplan.json
+        if jq -e '.resource_changes | length == 0' tfplan.json >/dev/null; then
+          echo "Terraform: No changes to apply."
+        else
+          terraform show -no-color tfplan
+          terraform apply -input=false tfplan
+        fi
