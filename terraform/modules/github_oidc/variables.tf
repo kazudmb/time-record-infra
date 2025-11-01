@@ -19,12 +19,46 @@ variable "github_owner" {
   type        = string
 }
 
-variable "github_repo" {
+variable "github_repo_infra" {
   description = "GitHub repository name"
   type        = string
 }
 
-variable "gha_role_name" {
-  description = "IAM role name for GitHub Actions"
+variable "github_repo_backend" {
+  description = "GitHub repository name for backend"
+  type        = string
+}
+
+variable "github_repo_frontend" {
+  description = "GitHub repository name for frontend"
+  type        = string
+}
+
+variable "backend_role_name" {
+  description = "IAM role name for backend GitHub Actions"
+  type        = string
+  default     = null
+}
+
+variable "backend_inline_policy_json" {
+  description = "Inline policy JSON for backend GitHub Actions role"
+  type        = string
+  default     = null
+}
+
+variable "frontend_role_name" {
+  description = "IAM role name for frontend GitHub Actions"
+  type        = string
+  default     = null
+}
+
+variable "frontend_inline_policy_json" {
+  description = "Inline policy JSON for frontend GitHub Actions role"
+  type        = string
+  default     = null
+}
+
+variable "infra_role_name" {
+  description = "IAM role name for infra GitHub Actions"
   type        = string
 }

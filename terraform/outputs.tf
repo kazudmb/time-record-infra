@@ -37,7 +37,17 @@ output "cognito_domain" {
   description = "Cognito Hosted UI domain prefix"
 }
 
-output "gha_role_arn" {
-  value       = module.github_oidc.gha_role_arn
-  description = "GitHub Actions CI IAM Role ARN"
+output "gha_infra_role_arn" {
+  value       = module.github_oidc.gha_infra_role_arn
+  description = "GitHub Actions infra deploy IAM Role ARN"
+}
+
+output "gha_backend_role_arn" {
+  value       = module.github_oidc.gha_backend_role_arn
+  description = "GitHub Actions backend deploy IAM Role ARN"
+}
+
+output "gha_frontend_role_arn" {
+  value       = module.github_oidc.gha_frontend_role_arn
+  description = "GitHub Actions frontend deploy IAM Role ARN"
 }

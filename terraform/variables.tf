@@ -72,10 +72,22 @@ variable "github_owner" {
   default     = "kazudmb"
 }
 
-variable "github_repo" {
+variable "github_repo_infra" {
   description = "GitHub repository name"
   type        = string
   default     = "time-record-infra"
+}
+
+variable "github_repo_backend" {
+  description = "GitHub repository name"
+  type        = string
+  default     = "time-record-backend"
+}
+
+variable "github_repo_frontend" {
+  description = "GitHub repository name"
+  type        = string
+  default     = "time-record-frontend"
 }
 
 variable "github_oidc_thumbprints" {
