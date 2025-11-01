@@ -2,51 +2,7 @@ locals {
   bucket_name = var.bucket_name
 }
 
-data "external" "frontend_bucket_probe" {
-  program = [
-    "python3",
-    "-c",
-    <<-EOPYTHON
-import json
-import subprocess
-import sys
-
-def main() -> None:
-    query = json.load(sys.stdin)
-    bucket = query["bucket"]
-    account_id = query.get("account_id")
-    cmd = ["aws", "s3api", "head-bucket", "--bucket", bucket]
-    if account_id:
-        cmd.extend(["--expected-bucket-owner", account_id])
-    try:
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        exists = "true"
-    except FileNotFoundError:
-        exists = "false"
-    except subprocess.CalledProcessError:
-        exists = "false"
-    print(json.dumps({"exists": exists}))
-
-
-if __name__ == "__main__":
-    main()
-    
-EOPYTHON
-  ]
-
-  query = {
-    bucket     = local.bucket_name
-    account_id = var.account_id
-  }
-}
-
-locals {
-  bucket_exists = try(data.external.frontend_bucket_probe.result.exists == "true", false)
-}
-
 resource "aws_s3_bucket" "frontend" {
-  count = local.bucket_exists ? 0 : 1
-
   bucket = local.bucket_name
 
   tags = {
@@ -56,9 +12,9 @@ resource "aws_s3_bucket" "frontend" {
 }
 
 locals {
-  bucket_id     = try(aws_s3_bucket.frontend[0].id, local.bucket_name)
-  bucket_arn    = try(aws_s3_bucket.frontend[0].arn, "arn:aws:s3:::${local.bucket_name}")
-  bucket_domain = try(aws_s3_bucket.frontend[0].bucket_regional_domain_name, "${local.bucket_name}.s3.${var.region}.amazonaws.com")
+  bucket_id     = aws_s3_bucket.frontend.id
+  bucket_arn    = aws_s3_bucket.frontend.arn
+  bucket_domain = aws_s3_bucket.frontend.bucket_regional_domain_name
 }
 
 resource "random_id" "oac" {
