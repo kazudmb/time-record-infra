@@ -37,7 +37,8 @@ data "aws_iam_policy_document" "gha_assume" {
       values = [
         "repo:${var.github_owner}/${var.github_repo}:ref:refs/heads/*",
         "repo:${var.github_owner}/${var.github_repo}:ref:refs/tags/*",
-        "repo:${var.github_owner}/${var.github_repo}:pull_request"
+        "repo:${var.github_owner}/${var.github_repo}:pull_request",
+        "repo:${var.github_owner}/${var.github_repo}:environment:*"
       ]
     }
   }
